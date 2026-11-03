@@ -1,28 +1,17 @@
-import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { env } from '../config/env.js';
+import { createDocument } from '../data/repository.js';
+import { documentTypes } from '../data/types.js';
 import { AppError } from '../lib/AppError.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
+import { deleteStoredDocument, storeDocument } from '../lib/documentStorage.js';
 import { authenticate } from '../middleware/authenticate.js';
-import { DocumentUpload, documentTypes } from '../models/DocumentUpload.js';
-
-mkdirSync(env.uploadDirectory, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: env.uploadDirectory,
-  filename: (_request, file, callback) => {
-    const extension = path.extname(file.originalname).toLowerCase();
-    callback(null, `${randomUUID()}${extension}`);
-  },
-});
 
 const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'application/pdf']);
 const uploader = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: env.maxUploadBytes, files: 1 },
   fileFilter: (_request, file, callback) => {
     if (!allowedMimeTypes.has(file.mimetype)) {
@@ -47,15 +36,29 @@ uploadRouter.post(
     }
 
     const documentType = documentTypeSchema.parse(request.body.documentType);
-    const document = await DocumentUpload.create({
-      owner: request.appUser!._id,
+    const stored = await storeDocument({
+      ownerId: String(request.appUser!._id),
       documentType,
       originalName: request.file.originalname,
-      storedName: request.file.filename,
       mimeType: request.file.mimetype,
-      size: request.file.size,
-      path: request.file.path,
+      bytes: request.file.buffer,
     });
+
+    let document;
+    try {
+      document = await createDocument({
+        ownerId: request.appUser!._id,
+        documentType,
+        originalName: request.file.originalname,
+        storedName: stored.storedName,
+        mimeType: request.file.mimetype,
+        size: request.file.size,
+        storageKey: stored.storageKey,
+      });
+    } catch (error) {
+      await deleteStoredDocument(stored).catch((cleanupError) => console.error(cleanupError));
+      throw error;
+    }
 
     response.status(201).json({
       document: {

@@ -1,12 +1,11 @@
-import type { DecodedIdToken } from 'firebase-admin/auth';
-import type { HydratedDocument } from 'mongoose';
-import type { UserRecord } from '../models/User.js';
+import type { AppUser } from '../data/types.js';
+import type { FirebaseIdentity } from '../lib/firebaseToken.js';
 
 declare global {
   namespace Express {
     interface Request {
-      firebaseUser?: DecodedIdToken;
-      appUser?: HydratedDocument<UserRecord>;
+      firebaseUser?: FirebaseIdentity;
+      appUser?: AppUser;
     }
   }
 }

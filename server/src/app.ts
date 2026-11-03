@@ -16,10 +16,23 @@ export const app = express();
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(
-  cors({
-    origin: env.clientOrigin,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+  cors((request, callback) => {
+    const origin = request.header('Origin');
+    let originAllowed = !origin || origin === env.clientOrigin;
+
+    if (origin) {
+      try {
+        originAllowed ||= new URL(origin).host === request.header('Host');
+      } catch {
+        originAllowed = false;
+      }
+    }
+
+    callback(null, {
+      origin: originAllowed,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    });
   }),
 );
 app.use(express.json({ limit: '1mb' }));

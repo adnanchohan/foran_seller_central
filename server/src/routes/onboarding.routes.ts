@@ -1,12 +1,17 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import {
+  countOwnedDocuments,
+  getApplicationByUserId,
+  saveApplicationDraft,
+  submitApplication,
+  updateUserPlan,
+} from '../data/repository.js';
+import { sellerPlans, type StoreApplication } from '../data/types.js';
 import { AppError } from '../lib/AppError.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { makeStoreSlug } from '../lib/slug.js';
 import { authenticate } from '../middleware/authenticate.js';
-import { DocumentUpload } from '../models/DocumentUpload.js';
-import { StoreApplication } from '../models/StoreApplication.js';
-import { sellerPlans, User } from '../models/User.js';
 
 const applicationFieldsSchema = z.object({
   sellerType: z.enum(['individual', 'company']),
@@ -67,7 +72,7 @@ const planSchema = z.object({ plan: z.enum(sellerPlans) });
 
 const editableStatuses = new Set(['DRAFT', 'CHANGES_REQUIRED']);
 
-function applicationPayload(application: Record<string, unknown>) {
+function applicationPayload(application: StoreApplication) {
   return {
     sellerType: application.sellerType,
     storeName: application.storeName,
@@ -79,22 +84,32 @@ function applicationPayload(application: Record<string, unknown>) {
     pickupContactPerson: application.pickupContactPerson,
     pickupContactMobile: application.pickupContactMobile,
     cnicNumber: application.cnicNumber,
-    bannerUpload: application.bannerUpload ? String(application.bannerUpload) : null,
-    logoUpload: application.logoUpload ? String(application.logoUpload) : null,
-    cnicFrontUpload: application.cnicFrontUpload ? String(application.cnicFrontUpload) : null,
-    cnicBackUpload: application.cnicBackUpload ? String(application.cnicBackUpload) : null,
-    companyDocumentUpload: application.companyDocumentUpload
-      ? String(application.companyDocumentUpload)
-      : null,
+    bannerUpload:
+      application.bannerUpload && typeof application.bannerUpload !== 'string'
+        ? application.bannerUpload._id
+        : application.bannerUpload,
+    logoUpload:
+      application.logoUpload && typeof application.logoUpload !== 'string'
+        ? application.logoUpload._id
+        : application.logoUpload,
+    cnicFrontUpload:
+      application.cnicFrontUpload && typeof application.cnicFrontUpload !== 'string'
+        ? application.cnicFrontUpload._id
+        : application.cnicFrontUpload,
+    cnicBackUpload:
+      application.cnicBackUpload && typeof application.cnicBackUpload !== 'string'
+        ? application.cnicBackUpload._id
+        : application.cnicBackUpload,
+    companyDocumentUpload:
+      application.companyDocumentUpload && typeof application.companyDocumentUpload !== 'string'
+        ? application.companyDocumentUpload._id
+        : application.companyDocumentUpload,
   };
 }
 
 async function assertOwnedUploads(userId: string, uploadIds: string[]) {
   const uniqueIds = [...new Set(uploadIds.filter(Boolean))];
-  const ownedCount = await DocumentUpload.countDocuments({
-    _id: { $in: uniqueIds },
-    owner: userId,
-  });
+  const ownedCount = await countOwnedDocuments(userId, uniqueIds);
   if (ownedCount !== uniqueIds.length) {
     throw new AppError(422, 'One or more uploaded documents are invalid.');
   }
@@ -106,10 +121,7 @@ onboardingRouter.use(authenticate);
 onboardingRouter.get(
   '/me/application',
   asyncHandler(async (request, response) => {
-    const application = await StoreApplication.findOne({ user: request.appUser!._id })
-      .populate('bannerUpload logoUpload cnicFrontUpload cnicBackUpload companyDocumentUpload',
-        'documentType originalName mimeType size')
-      .lean();
+    const application = await getApplicationByUserId(request.appUser!._id);
     response.json({ application });
   }),
 );
@@ -118,20 +130,15 @@ onboardingRouter.put(
   '/me/application/draft',
   asyncHandler(async (request, response) => {
     const data = draftSchema.parse(request.body);
-    let application = await StoreApplication.findOne({ user: request.appUser!._id });
-
-    if (!application) {
-      application = new StoreApplication({ user: request.appUser!._id });
-    }
-    if (!editableStatuses.has(application.status)) {
+    const existing = await getApplicationByUserId(request.appUser!._id, false);
+    if (existing && !editableStatuses.has(existing.status)) {
       throw new AppError(409, 'This application cannot be edited in its current state.');
     }
-
-    Object.assign(application, data);
+    const draft = { ...data };
     if (data.storeName) {
-      application.storeSlug = makeStoreSlug(data.storeName, request.firebaseUser!.uid);
+      draft.storeSlug = makeStoreSlug(data.storeName, request.firebaseUser!.uid);
     }
-    await application.save();
+    const application = await saveApplicationDraft(request.appUser!._id, draft);
     response.json({ application });
   }),
 );
@@ -139,7 +146,7 @@ onboardingRouter.put(
 onboardingRouter.post(
   '/me/application/submit',
   asyncHandler(async (request, response) => {
-    const application = await StoreApplication.findOne({ user: request.appUser!._id });
+    const application = await getApplicationByUserId(request.appUser!._id);
     if (!application) {
       throw new AppError(404, 'Save the store application before submitting it.');
     }
@@ -147,7 +154,7 @@ onboardingRouter.post(
       throw new AppError(409, 'This application has already been submitted.');
     }
 
-    const payload = submitSchema.parse(applicationPayload(application.toObject()));
+    const payload = submitSchema.parse(applicationPayload(application));
     await assertOwnedUploads(
       String(request.appUser!._id),
       [
@@ -159,22 +166,8 @@ onboardingRouter.post(
       ].filter((value): value is string => Boolean(value)),
     );
 
-    const isResubmission = application.status === 'CHANGES_REQUIRED';
-    if (isResubmission) application.version += 1;
-    application.status = 'PENDING_REVIEW';
-    application.submittedAt = new Date();
-    application.reviewedAt = null;
-    application.reviewedBy = null;
-    application.reviewNote = '';
-    application.history.push({
-      status: 'PENDING_REVIEW',
-      note: isResubmission ? 'Application resubmitted by seller.' : 'Application submitted by seller.',
-      actor: request.appUser!._id,
-      version: application.version,
-      at: new Date(),
-    });
-    await application.save();
-    response.json({ application });
+    const submittedApplication = await submitApplication(application, request.appUser!._id);
+    response.json({ application: submittedApplication });
   }),
 );
 
@@ -182,16 +175,12 @@ onboardingRouter.put(
   '/me/plan',
   asyncHandler(async (request, response) => {
     const { plan } = planSchema.parse(request.body);
-    const application = await StoreApplication.findOne({ user: request.appUser!._id });
+    const application = await getApplicationByUserId(request.appUser!._id, false);
     if (application?.status !== 'APPROVED') {
       throw new AppError(409, 'Your store application must be approved before selecting a plan.');
     }
 
-    const user = await User.findByIdAndUpdate(
-      request.appUser!._id,
-      { $set: { plan } },
-      { new: true },
-    );
+    const user = await updateUserPlan(request.appUser!._id, plan);
     response.json({ user });
   }),
 );

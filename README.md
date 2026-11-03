@@ -21,7 +21,7 @@ You need:
 - npm
 - A local MongoDB installation or MongoDB Atlas connection string
 - A Firebase project with a Web App and Google Authentication enabled
-- Firebase Admin service-account values for the Express server
+- A Firebase project ID for server-side ID-token verification
 
 ## Step-by-step setup
 
@@ -64,8 +64,9 @@ In the Firebase console:
 4. Enable **Google** only.
 5. Confirm `localhost` is an authorized domain.
 6. Copy the Web App configuration values into `client/.env`.
-7. Open **Project settings → Service accounts** and create a service account key.
-8. Copy its project ID, client email, and private key into `server/.env`.
+7. Copy the Firebase project ID into `server/.env`.
+
+The server verifies Firebase ID tokens using Google's public signing keys. It does not require a Firebase Admin service-account private key.
 
 Keep the private key inside the environment file. Do not add the downloaded service-account JSON file to this repository.
 
@@ -128,7 +129,11 @@ npm run build
 
 ## Development-only limitations
 
-- Uploaded identity documents are written to `server/uploads` for local development. Production must use private object storage, malware scanning, encryption, retention rules, and audited access.
+- Local Node development writes identity documents to `server/uploads`; the Cloudflare deployment writes them to a private R2 bucket. Add malware scanning, explicit retention rules, and audited reviewer access before accepting real identity documents.
 - Store Placement Payment does not collect money. Its action creates a `DEMO_COMPLETED` record and opens the dashboard.
 - The temporary dashboard will be replaced after its final design is provided.
 - The placeholder brand mark should be replaced with the official Foran.pk logo asset.
+
+## Deploying to Cloudflare
+
+The repository includes a Cloudflare Worker entry point, R2-backed production uploads, Worker static assets, and a Durable Object for the MongoDB connection. Follow [CLOUDFLARE_DEPLOYMENT.md](./CLOUDFLARE_DEPLOYMENT.md) from top to bottom. Keep using the normal `npm run dev` workflow for everyday local development.

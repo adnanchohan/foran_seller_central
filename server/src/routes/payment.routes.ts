@@ -1,10 +1,12 @@
 import { Router } from 'express';
+import {
+  completePlaceholderPayment,
+  getApplicationByUserId,
+  getPaymentByUserId,
+} from '../data/repository.js';
 import { AppError } from '../lib/AppError.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { authenticate } from '../middleware/authenticate.js';
-import { Payment } from '../models/Payment.js';
-import { StoreApplication } from '../models/StoreApplication.js';
-import { User } from '../models/User.js';
 
 const planPrices = {
   BASIC: 5000,
@@ -17,7 +19,7 @@ paymentRouter.use(authenticate);
 paymentRouter.post(
   '/placeholder',
   asyncHandler(async (request, response) => {
-    const application = await StoreApplication.findOne({ user: request.appUser!._id });
+    const application = await getApplicationByUserId(request.appUser!._id, false);
     if (application?.status !== 'APPROVED') {
       throw new AppError(409, 'Your store application must be approved first.');
     }
@@ -26,24 +28,11 @@ paymentRouter.post(
     }
 
     const plan = request.appUser!.plan;
-    const payment = await Payment.findOneAndUpdate(
-      { user: request.appUser!._id },
-      {
-        $set: {
-          plan,
-          amount: planPrices[plan],
-          currency: 'PKR',
-          status: 'DEMO_COMPLETED',
-          provider: 'NOT_INTEGRATED',
-          notice: 'Development placeholder only. No money was collected.',
-        },
-      },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+    const payment = await completePlaceholderPayment(
+      request.appUser!._id,
+      plan,
+      planPrices[plan],
     );
-
-    await User.findByIdAndUpdate(request.appUser!._id, {
-      $set: { dashboardEnabled: true },
-    });
 
     response.status(201).json({ payment });
   }),
@@ -52,7 +41,7 @@ paymentRouter.post(
 paymentRouter.get(
   '/me',
   asyncHandler(async (request, response) => {
-    const payment = await Payment.findOne({ user: request.appUser!._id }).lean();
+    const payment = await getPaymentByUserId(request.appUser!._id);
     response.json({ payment });
   }),
 );

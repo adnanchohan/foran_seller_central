@@ -1,31 +1,35 @@
 {
-  "name": "foran-seller-central",
-  "version": "0.1.0",
+  "name": "foran-platform",
+  "version": "0.0.0",
   "private": true,
-  "workspaces": [
-    "client",
-    "server"
-  ],
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=11.9.0 <12"
+  },
   "scripts": {
-    "dev": "npm run db:migrate:local && concurrently -n client,worker -c cyan,magenta \"npm run dev --workspace client\" \"wrangler dev --port 5001\"",
-    "dev:client": "npm run dev --workspace client",
-    "dev:server": "npm run db:migrate:local && wrangler dev --port 5001",
-    "build": "npm run build --workspace client && npm run build --workspace server",
-    "typecheck": "npm run typecheck --workspace client && npm run typecheck --workspace server",
-    "db:create": "wrangler d1 create foran-seller-central-db",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "cloudflare:typegen": "wrangler types worker-configuration.d.ts",
-    "cloudflare:dev": "npm run db:migrate:local && npm run build --workspace client && wrangler dev",
-    "cloudflare:deploy": "npm run db:migrate:remote && npm run build --workspace client && wrangler deploy",
-    "cloudflare:tail": "wrangler tail"
+    "build": "turbo run build",
+    "check": "pnpm format:check && pnpm contract:lint && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "contract:lint": "redocly lint packages/contracts/openapi/v1.yaml --format=stylish",
+    "db:generate": "pnpm --filter @foran/db db:generate",
+    "db:migrate:local": "pnpm --filter @foran/api-worker db:migrate:local",
+    "dev:api": "pnpm --filter @foran/api-worker dev",
+    "dev:user": "pnpm --filter @foran/user-dashboard dev",
+    "dev:admin": "pnpm --filter @foran/admin-dashboard dev",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261022.1",
-    "concurrently": "^9.2.1",
-    "wrangler": "^4.151.1"
-  },
-  "engines": {
-    "node": ">=24"
+    "@eslint/js": "10.0.1",
+    "@redocly/cli": "2.70.0",
+    "eslint": "10.13.0",
+    "prettier": "3.9.10",
+    "turbo": "2.11.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5"
   }
 }

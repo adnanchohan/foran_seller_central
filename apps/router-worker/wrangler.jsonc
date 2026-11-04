@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "foran-router-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-24",
+  "services": [
+    {
+      "binding": "API_WORKER",
+      "service": "foran-api-worker",
+    },
+  ],
+  "vars": {
+    "USER_PAGES_ORIGIN": "http://localhost:5173",
+    "ADMIN_PAGES_ORIGIN": "http://localhost:5174",
+  },
+}

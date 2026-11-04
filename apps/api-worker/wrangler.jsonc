@@ -1,0 +1,31 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "foran-api-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "foran-seller-central-db",
+      "database_id": "local-db-id",
+      "migrations_dir": "../../packages/db/migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "DOCUMENTS_BUCKET",
+      "bucket_name": "foran-seller-documents",
+    },
+  ],
+  "vars": {
+    "NODE_ENV": "development",
+    "LOG_LEVEL": "info",
+    "DASHBOARD_ORIGINS": "http://localhost:5173,http://localhost:5174",
+    "GOOGLE_CLIENT_ID": "mock-google-client-id.apps.googleusercontent.com",
+    "ADMIN_GOOGLE_SUBS": "test-admin-subject",
+    "ADMIN_EMAILS": "admin@foran.pk,founder@foran.pk",
+    "SESSION_TTL_SECONDS": "3600",
+    "MAX_UPLOAD_MB": "10",
+  },
+}

@@ -1,0 +1,920 @@
+openapi: 3.1.0
+info:
+  title: Foran Seller Central API
+  description: Master API contract for seller onboarding, document verification, plan selection, and admin operations.
+  version: 1.0.0
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: /v1
+    description: Production Edge API Gateway
+security:
+  - bearerAuth: []
+  - sessionCookie: []
+paths:
+  /health:
+    get:
+      summary: Health check probe
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: foran-api-worker
+                required:
+                  - status
+                  - service
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /ready:
+    get:
+      summary: Readiness probe
+      operationId: getReady
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                    example: true
+                required:
+                  - ready
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          description: Service not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /auth/session:
+    get:
+      summary: Get current authenticated user session
+      operationId: getSession
+      parameters:
+        - name: portal
+          in: query
+          required: false
+          description: Portal context to retrieve session for
+          schema:
+            type: string
+            enum: [admin, seller]
+        - name: X-Foran-Portal
+          in: header
+          required: false
+          description: Portal header context
+          schema:
+            type: string
+            enum: [admin, seller]
+      responses:
+        "200":
+          description: Authenticated user details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+                required:
+                  - user
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /auth/google-session:
+    post:
+      summary: Authenticate via Google ID token credential
+      operationId: createGoogleSession
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                credential:
+                  type: string
+                portal:
+                  type: string
+                  enum: [admin, seller]
+                  description: Specific portal target for the session
+              required:
+                - credential
+      responses:
+        "200":
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+                  csrfToken:
+                    type: string
+                  sessionToken:
+                    type: string
+                  expiresAt:
+                    type: integer
+                required:
+                  - user
+                  - csrfToken
+                  - sessionToken
+                  - expiresAt
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /auth/signout:
+    post:
+      summary: Sign out and invalidate session cookies
+      operationId: signOut
+      security: []
+      parameters:
+        - name: portal
+          in: query
+          required: false
+          description: Portal context to sign out from
+          schema:
+            type: string
+            enum: [admin, seller]
+        - name: X-Foran-Portal
+          in: header
+          required: false
+          description: Portal header context
+          schema:
+            type: string
+            enum: [admin, seller]
+      responses:
+        "200":
+          description: Successfully signed out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                required:
+                  - success
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /onboarding/me/application:
+    get:
+      summary: Retrieve seller onboarding application
+      operationId: getMyApplication
+      responses:
+        "200":
+          description: Application data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  application:
+                    anyOf:
+                      - $ref: "#/components/schemas/StoreApplication"
+                      - type: "null"
+                required:
+                  - application
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /onboarding/me/application/draft:
+    put:
+      summary: Save seller application draft
+      operationId: saveApplicationDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationDraftInput"
+      responses:
+        "200":
+          description: Saved application
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  application:
+                    $ref: "#/components/schemas/StoreApplication"
+                required:
+                  - application
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /onboarding/me/application/submit:
+    post:
+      summary: Submit seller application for admin review
+      operationId: submitApplication
+      responses:
+        "200":
+          description: Application submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  application:
+                    $ref: "#/components/schemas/StoreApplication"
+                required:
+                  - application
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /onboarding/me/plan:
+    put:
+      summary: Select seller membership plan
+      operationId: selectPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plan:
+                  type: string
+                  enum: [BASIC, PREMIUM]
+              required:
+                - plan
+      responses:
+        "200":
+          description: Plan selected successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+                required:
+                  - user
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /uploads:
+    post:
+      summary: Upload onboarding document
+      operationId: uploadDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                documentType:
+                  type: string
+                  enum: [store-banner, store-logo, cnic-front, cnic-back, company-document]
+              required:
+                - file
+                - documentType
+      responses:
+        "201":
+          description: Upload successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document:
+                    $ref: "#/components/schemas/UploadedDocument"
+                required:
+                  - document
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntityError"
+
+  /payments/placeholder:
+    post:
+      summary: Complete simulated onboarding payment
+      operationId: completePlaceholderPayment
+      responses:
+        "201":
+          description: Payment completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment:
+                    $ref: "#/components/schemas/Payment"
+                required:
+                  - payment
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /payments/me:
+    get:
+      summary: Retrieve current seller payment
+      operationId: getMyPayment
+      responses:
+        "200":
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment:
+                    anyOf:
+                      - $ref: "#/components/schemas/Payment"
+                      - type: "null"
+                required:
+                  - payment
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /dashboard:
+    get:
+      summary: Retrieve seller dashboard data
+      operationId: getDashboard
+      responses:
+        "200":
+          description: Dashboard details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+                  application:
+                    anyOf:
+                      - $ref: "#/components/schemas/StoreApplication"
+                      - type: "null"
+                  payment:
+                    anyOf:
+                      - $ref: "#/components/schemas/Payment"
+                      - type: "null"
+                required:
+                  - user
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /admin/applications:
+    get:
+      summary: List seller applications for admin review
+      operationId: adminListApplications
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, PENDING_REVIEW, CHANGES_REQUIRED, APPROVED]
+      responses:
+        "200":
+          description: Application list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  applications:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StoreApplication"
+                required:
+                  - applications
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /admin/applications/{applicationId}:
+    get:
+      summary: Retrieve specific application details for admin
+      operationId: adminGetApplication
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detailed application
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  application:
+                    $ref: "#/components/schemas/StoreApplication"
+                required:
+                  - application
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /admin/applications/{applicationId}/decision:
+    patch:
+      summary: Record admin approval or changes requested
+      operationId: adminReviewApplication
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision:
+                  type: string
+                  enum: [APPROVE, REQUEST_CHANGES]
+                note:
+                  type: string
+              required:
+                - decision
+      responses:
+        "200":
+          description: Application reviewed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  application:
+                    $ref: "#/components/schemas/StoreApplication"
+                required:
+                  - application
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /admin/documents/{documentId}/download:
+    get:
+      summary: Download uploaded document for admin review
+      operationId: adminDownloadDocument
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document binary stream
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session_token
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        googleSub:
+          type: string
+        email:
+          type: string
+        displayName:
+          type: string
+        photoUrl:
+          type: string
+        authProvider:
+          type: string
+        role:
+          type: string
+          enum: [seller, admin]
+        plan:
+          anyOf:
+            - type: string
+              enum: [BASIC, PREMIUM]
+            - type: "null"
+        dashboardEnabled:
+          type: boolean
+        createdAt:
+          type: integer
+        updatedAt:
+          type: integer
+      required:
+        - id
+        - googleSub
+        - email
+        - displayName
+        - photoUrl
+        - authProvider
+        - role
+        - dashboardEnabled
+        - createdAt
+        - updatedAt
+
+    UploadedDocument:
+      type: object
+      properties:
+        id:
+          type: string
+        ownerId:
+          type: string
+        documentType:
+          type: string
+          enum: [store-banner, store-logo, cnic-front, cnic-back, company-document]
+        originalName:
+          type: string
+        storedName:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+        storageKey:
+          type: string
+        createdAt:
+          type: integer
+        updatedAt:
+          type: integer
+      required:
+        - id
+        - ownerId
+        - documentType
+        - originalName
+        - storedName
+        - mimeType
+        - size
+        - storageKey
+        - createdAt
+        - updatedAt
+
+    StoreApplication:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, PENDING_REVIEW, CHANGES_REQUIRED, APPROVED]
+        version:
+          type: integer
+        sellerType:
+          type: string
+          enum: [individual, company]
+        storeName:
+          type: string
+        storeSlug:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        warehouseAddress:
+          type: string
+        pickupCity:
+          type: string
+        pickupArea:
+          type: string
+        pickupContactPerson:
+          type: string
+        pickupContactMobile:
+          type: string
+        cnicNumber:
+          type: string
+        bannerUploadId:
+          anyOf:
+            - type: string
+            - type: "null"
+        logoUploadId:
+          anyOf:
+            - type: string
+            - type: "null"
+        cnicFrontUploadId:
+          anyOf:
+            - type: string
+            - type: "null"
+        cnicBackUploadId:
+          anyOf:
+            - type: string
+            - type: "null"
+        companyDocumentUploadId:
+          anyOf:
+            - type: string
+            - type: "null"
+        bannerUpload:
+          anyOf:
+            - $ref: "#/components/schemas/UploadedDocument"
+            - type: "null"
+        logoUpload:
+          anyOf:
+            - $ref: "#/components/schemas/UploadedDocument"
+            - type: "null"
+        cnicFrontUpload:
+          anyOf:
+            - $ref: "#/components/schemas/UploadedDocument"
+            - type: "null"
+        cnicBackUpload:
+          anyOf:
+            - $ref: "#/components/schemas/UploadedDocument"
+            - type: "null"
+        companyDocumentUpload:
+          anyOf:
+            - $ref: "#/components/schemas/UploadedDocument"
+            - type: "null"
+        submittedAt:
+          anyOf:
+            - type: integer
+            - type: "null"
+        reviewedAt:
+          anyOf:
+            - type: integer
+            - type: "null"
+        reviewedBy:
+          anyOf:
+            - type: string
+            - type: "null"
+        reviewNote:
+          type: string
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApplicationHistoryItem"
+        createdAt:
+          type: integer
+        updatedAt:
+          type: integer
+      required:
+        - id
+        - userId
+        - status
+        - version
+        - sellerType
+        - storeName
+        - storeSlug
+        - category
+        - description
+        - warehouseAddress
+        - pickupCity
+        - pickupArea
+        - pickupContactPerson
+        - pickupContactMobile
+        - cnicNumber
+        - reviewNote
+        - history
+        - createdAt
+        - updatedAt
+
+    ApplicationDraftInput:
+      type: object
+      properties:
+        sellerType:
+          type: string
+          enum: [individual, company]
+        storeName:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        warehouseAddress:
+          type: string
+        pickupCity:
+          type: string
+        pickupArea:
+          type: string
+        pickupContactPerson:
+          type: string
+        pickupContactMobile:
+          type: string
+        cnicNumber:
+          type: string
+        bannerUploadId:
+          anyOf:
+            - type: string
+            - type: "null"
+        logoUploadId:
+          anyOf:
+            - type: string
+            - type: "null"
+        cnicFrontUploadId:
+          anyOf:
+            - type: string
+            - type: "null"
+        cnicBackUploadId:
+          anyOf:
+            - type: string
+            - type: "null"
+        companyDocumentUploadId:
+          anyOf:
+            - type: string
+            - type: "null"
+
+    ApplicationHistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        applicationId:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, PENDING_REVIEW, CHANGES_REQUIRED, APPROVED]
+        note:
+          type: string
+        actorId:
+          type: string
+        version:
+          type: integer
+        createdAt:
+          type: integer
+      required:
+        - id
+        - applicationId
+        - status
+        - note
+        - actorId
+        - version
+        - createdAt
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        plan:
+          type: string
+          enum: [BASIC, PREMIUM]
+        amount:
+          type: integer
+        currency:
+          type: string
+        status:
+          type: string
+        provider:
+          type: string
+        notice:
+          type: string
+        createdAt:
+          type: integer
+        updatedAt:
+          type: integer
+      required:
+        - id
+        - userId
+        - plan
+        - amount
+        - currency
+        - status
+        - provider
+        - notice
+        - createdAt
+        - updatedAt
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+            details:
+              type: object
+          required:
+            - code
+            - message
+            - requestId
+      required:
+        - error
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+    ForbiddenError:
+      description: Access forbidden for the current user
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+    ValidationError:
+      description: Invalid request payload or parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+    ConflictError:
+      description: State conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+    UnprocessableEntityError:
+      description: Unprocessable request data
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"

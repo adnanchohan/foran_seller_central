@@ -1,4 +1,13 @@
-# Copy this file to .dev.vars only when testing the Cloudflare Worker locally.
+# Copy this file to apps/api-worker/.dev.vars only when testing the Cloudflare Worker locally.
 # Do not commit .dev.vars.
-FIREBASE_PROJECT_ID=your-firebase-project-id
-ADMIN_EMAILS=admin@example.com
+
+# Dual Google OAuth Client IDs (Portal Isolation)
+GOOGLE_SELLER_CLIENT_ID=your-seller-platform-client-id.apps.googleusercontent.com
+GOOGLE_ADMIN_CLIENT_ID=your-admin-dashboard-client-id.apps.googleusercontent.com
+
+# Fallback Client ID (optional)
+GOOGLE_CLIENT_ID=your-default-client-id.apps.googleusercontent.com
+
+# Administrator Access
+ADMIN_EMAILS=admin@example.com,admin@foran.pk
+ADMIN_GOOGLE_SUBS=optional-google-sub-id

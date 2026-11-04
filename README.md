@@ -1,139 +1,95 @@
-# Foran.pk Seller Central
+# Foran.pk Seller Central Platform
 
-MERN seller onboarding application with Firebase provider authentication, manual administrator verification, plan selection, a placeholder store-placement payment step, and a temporary seller dashboard.
+Production-grade, edge-first seller central platform built with a Cloudflare serverless stack, Drizzle ORM on D1, contract-first OpenAPI 3.1 specification, and React 19 dashboards.
 
-## Application flow
+---
 
-1. Sign in with Google through Firebase Authentication.
-2. Complete and submit the store-verification form.
-3. Wait for an administrator to approve it or request changes.
-4. Select Basic or Premium. The selection is stored in `users.plan`.
-5. Continue through the placeholder Store Placement Payment screen.
-6. Open the temporary seller dashboard.
+## Architecture Overview
 
-Apple sign-in is intentionally not enabled yet. There is no manual email/password authentication.
+```mermaid
+flowchart TD
+    Client["Browser / Mobile Client"] -->|HTTPS| Edge["Cloudflare Edge (Universal SSL)"]
+    Edge --> Router["Router Worker (Unified Gateway)"]
+    Router -->|"/v1/*"| API["API Worker (Hono + TypeScript)"]
+    Router -->|"/user/*"| UserDash["User Dashboard (React 19 + Vite SPA)"]
+    Router -->|"/admin/*"| AdminDash["Admin Dashboard (React 19 + Vite SPA)"]
 
-## Before running anything
+    API -->|D1 Binding| DB[("Cloudflare D1 (SQLite + Drizzle)")]
+    API -->|R2 Binding| Storage[("Cloudflare R2 (Private Object Store)")]
+    API -->|Service Binding| Router
+```
 
-You need:
+### Monorepo Structure
 
-- Node.js 24 LTS or another currently supported LTS release
-- npm
-- A local MongoDB installation or MongoDB Atlas connection string
-- A Firebase project with a Web App and Google Authentication enabled
-- A Firebase project ID for server-side ID-token verification
+- **`apps/api-worker`**: Cloudflare Worker backend powered by Hono v4 and Drizzle ORM on D1.
+- **`apps/router-worker`**: Single-domain reverse proxy gateway using Cloudflare Service Bindings.
+- **`apps/user-dashboard`**: React 19 SPA for seller onboarding, store profile, and dashboard.
+- **`apps/admin-dashboard`**: React 19 SPA for administrator verification, document inspection, and review queues.
+- **`packages/config`**: Shared domain constants, subscription plans, pricing, and document types.
+- **`packages/contracts`**: OpenAPI 3.1 contract verified with Redocly CLI and exported TypeScript types.
+- **`packages/db`**: Drizzle ORM SQLite schemas and SQL migrations.
 
-## Step-by-step setup
+---
 
-Run every command below yourself from the project root.
+## Getting Started
 
-### 1. Confirm your tools
+### Prerequisites
+
+- **Node.js**: `>=24`
+- **pnpm**: `>=11.9.0`
+
+### Installation
 
 ```bash
-node --version
-npm --version
-mongosh --version
+pnpm install
 ```
 
-If you use MongoDB Atlas, `mongosh` is optional.
+### Quality Gate Check
 
-### 2. Install both workspace applications
+Run all verification stages (formatting, OpenAPI linting, ESLint, TypeScript typecheck, tests, build):
 
 ```bash
-npm install
+pnpm check
 ```
 
-The root `package.json` installs dependencies for both `client` and `server` through npm workspaces.
+### Local Development
 
-### 3. Create your local environment files
+Start the API backend with local D1 and R2 state:
 
 ```bash
-cp client/.env.example client/.env
-cp server/.env.example server/.env
+pnpm dev:api
 ```
 
-Never commit either `.env` file.
-
-### 4. Configure Firebase Authentication
-
-In the Firebase console:
-
-1. Create or select a Firebase project.
-2. Add a Web App.
-3. Open **Authentication → Sign-in method**.
-4. Enable **Google** only.
-5. Confirm `localhost` is an authorized domain.
-6. Copy the Web App configuration values into `client/.env`.
-7. Copy the Firebase project ID into `server/.env`.
-
-The server verifies Firebase ID tokens using Google's public signing keys. It does not require a Firebase Admin service-account private key.
-
-Keep the private key inside the environment file. Do not add the downloaded service-account JSON file to this repository.
-
-### 5. Choose the first administrator
-
-Set `ADMIN_EMAILS` in `server/.env` to the Google email address that should access the admin portal:
-
-```dotenv
-ADMIN_EMAILS=your-google-account@example.com
-```
-
-Multiple administrator emails can be separated with commas.
-
-### 6. Configure MongoDB
-
-For a local database, keep:
-
-```dotenv
-MONGODB_URI=mongodb://127.0.0.1:27017/foran_seller_central
-```
-
-Or replace it with your MongoDB Atlas connection string.
-
-### 7. Start the application
-
-To start both applications together:
+Start the User Dashboard:
 
 ```bash
-npm run dev
+pnpm dev:user
 ```
 
-Or use two terminals to reinforce the client/server separation:
+Start the Admin Dashboard:
 
 ```bash
-npm run dev:server
+pnpm dev:admin
 ```
+
+---
+
+## Database Migrations
+
+Generate new migrations when modifying schema in `packages/db/src/schema.ts`:
 
 ```bash
-npm run dev:client
+pnpm db:generate
 ```
 
-Open `http://localhost:5173`.
-
-### 8. Test the approval workflow
-
-Use two different Google accounts:
-
-1. Sign in with a seller account, complete the store form, and submit it.
-2. Sign out.
-3. Sign in with the email listed in `ADMIN_EMAILS`.
-4. Open `/admin`, review the application, and approve it or request changes.
-5. Sign back in as the seller and confirm the Approval step restores the saved status.
-
-### 9. Build when you are ready
+Apply migrations locally:
 
 ```bash
-npm run typecheck
-npm run build
+pnpm db:migrate:local
 ```
 
-## Development-only limitations
+---
 
-- Local Node development writes identity documents to `server/uploads`; the Cloudflare deployment writes them to a private R2 bucket. Add malware scanning, explicit retention rules, and audited reviewer access before accepting real identity documents.
-- Store Placement Payment does not collect money. Its action creates a `DEMO_COMPLETED` record and opens the dashboard.
-- The temporary dashboard will be replaced after its final design is provided.
-- The placeholder brand mark should be replaced with the official Foran.pk logo asset.
+## Deployment
 
-## Deploying to Cloudflare
-
-The repository includes a Cloudflare Worker entry point, R2-backed production uploads, Worker static assets, and a Durable Object for the MongoDB connection. Follow [CLOUDFLARE_DEPLOYMENT.md](./CLOUDFLARE_DEPLOYMENT.md) from top to bottom. Keep using the normal `npm run dev` workflow for everyday local development.
+Refer to [`CLOUDFLARE_DEPLOYMENT.md`](./CLOUDFLARE_DEPLOYMENT.md) for full instructions on provisioning D1, R2, and deploying the Workers and Pages applications.

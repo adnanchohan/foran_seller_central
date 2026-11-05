@@ -119,6 +119,20 @@ export async function reviewApplication(
   return data.application;
 }
 
+export function getDocumentViewUrl(documentId: string): string {
+  const token = getStoredSessionToken();
+  const query = token ? `?token=${encodeURIComponent(token)}` : "";
+  return `${API_BASE}/admin/documents/${documentId}/view${query}`;
+}
+
+export async function deleteApplication(
+  id: string,
+): Promise<{ success: boolean; message: string }> {
+  return request<{ success: boolean; message: string }>(`/admin/applications/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export async function downloadDocument(documentId: string, filename: string): Promise<void> {
   const token = getStoredSessionToken();
   const response = await fetch(`${API_BASE}/admin/documents/${documentId}/download`, {

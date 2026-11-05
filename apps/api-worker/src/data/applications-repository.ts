@@ -1,7 +1,7 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { ApplicationStatus } from "@foran/config";
 import type { ApplicationDraftInput, StoreApplication } from "@foran/contracts";
-import { applicationHistory, storeApplications } from "@foran/db";
+import { applicationHistory, documentUploads, storeApplications, users } from "@foran/db";
 import { generateUuid } from "../security/tokens.js";
 import type { Database } from "./db.js";
 
@@ -12,6 +12,7 @@ export async function findApplicationByUserId(
   const result = await db.query.storeApplications.findFirst({
     where: eq(storeApplications.userId, userId),
     with: {
+      user: true,
       bannerUpload: true,
       logoUpload: true,
       cnicFrontUpload: true,
@@ -30,6 +31,7 @@ export async function findApplicationById(
   const result = await db.query.storeApplications.findFirst({
     where: eq(storeApplications.id, id),
     with: {
+      user: true,
       bannerUpload: true,
       logoUpload: true,
       cnicFrontUpload: true,
@@ -49,6 +51,7 @@ export async function listApplications(
     where: status ? eq(storeApplications.status, status) : undefined,
     orderBy: [desc(storeApplications.submittedAt), desc(storeApplications.updatedAt)],
     with: {
+      user: true,
       bannerUpload: true,
       logoUpload: true,
       cnicFrontUpload: true,
@@ -204,4 +207,44 @@ export async function reviewApplication(
   });
 
   return (await findApplicationById(db, input.application.id))!;
+}
+
+export async function deleteApplicationById(
+  db: Database,
+  applicationId: string,
+): Promise<{ success: boolean; documentStorageKeys: string[] }> {
+  const application = await findApplicationById(db, applicationId);
+  if (!application) {
+    return { success: false, documentStorageKeys: [] };
+  }
+
+  const docIds = [
+    application.logoUploadId,
+    application.cnicFrontUploadId,
+    application.cnicBackUploadId,
+    application.bannerUploadId,
+    application.companyDocumentUploadId,
+  ].filter((id): id is string => Boolean(id));
+
+  const storageKeys: string[] = [];
+  if (docIds.length > 0) {
+    const docs = await db.query.documentUploads.findMany({
+      where: inArray(documentUploads.id, docIds),
+    });
+    for (const d of docs) {
+      if (d.storageKey) storageKeys.push(d.storageKey);
+    }
+    await db.delete(documentUploads).where(inArray(documentUploads.id, docIds));
+  }
+
+  // Delete the application itself (applicationHistory cascades)
+  await db.delete(storeApplications).where(eq(storeApplications.id, applicationId));
+
+  // Reset user's plan and dashboardEnabled
+  await db
+    .update(users)
+    .set({ plan: null, dashboardEnabled: false })
+    .where(eq(users.id, application.userId));
+
+  return { success: true, documentStorageKeys: storageKeys };
 }

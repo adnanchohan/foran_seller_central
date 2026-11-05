@@ -138,6 +138,12 @@ export async function selectPlan(plan: SellerPlan): Promise<User> {
   return data.user;
 }
 
+export function getUploadViewUrl(uploadId: string): string {
+  const token = getStoredSessionToken();
+  const query = token ? `?token=${encodeURIComponent(token)}` : "";
+  return `${API_BASE}/uploads/${uploadId}/view${query}`;
+}
+
 export async function uploadDocument(file: File, documentType: string): Promise<UploadedDocument> {
   const form = new FormData();
   form.append("file", file);

@@ -11,6 +11,8 @@ vi.mock("./api.js", () => ({
   getApplication: vi.fn(),
   reviewApplication: vi.fn(),
   downloadDocument: vi.fn(),
+  deleteApplication: vi.fn(),
+  getDocumentViewUrl: vi.fn((id: string) => `/mock-docs/${id}`),
 }));
 
 describe("Admin Dashboard App Flow", () => {

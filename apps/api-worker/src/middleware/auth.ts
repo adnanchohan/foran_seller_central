@@ -12,10 +12,13 @@ export function createAuthMiddleware(deps: AppDependencies = {}): MiddlewareHand
 
   return async (c, next) => {
     const authHeader = c.req.header("authorization");
+    const queryToken = c.req.query("token");
     let token: string | undefined;
 
     if (authHeader?.startsWith("Bearer ")) {
       token = authHeader.slice(7).trim();
+    } else if (queryToken) {
+      token = queryToken.trim();
     } else {
       const portalHeader = c.req.header("x-foran-portal");
       const portalQuery = c.req.query("portal");

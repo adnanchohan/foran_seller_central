@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { APPLICATION_STATUSES } from "@foran/config";
 import {
+  deleteApplicationById,
   findApplicationById,
   listApplications,
   reviewApplication,
@@ -58,6 +59,31 @@ export function createAdminRoutes(deps: AppDependencies = {}) {
     return c.json({ application });
   });
 
+  routes.delete("/applications/:applicationId", async (c) => {
+    const applicationId = c.req.param("applicationId");
+    const db = createDrizzleDb(c.env.DB);
+    const result = await deleteApplicationById(db, applicationId);
+
+    if (!result.success) {
+      throw new ApiError({
+        code: "NOT_FOUND",
+        message: "Application not found.",
+        status: 404,
+      });
+    }
+
+    if (c.env.DOCUMENTS_BUCKET && result.documentStorageKeys.length > 0) {
+      await Promise.allSettled(
+        result.documentStorageKeys.map((key) => c.env.DOCUMENTS_BUCKET.delete(key)),
+      );
+    }
+
+    return c.json({
+      success: true,
+      message: "Store application successfully wiped out.",
+    });
+  });
+
   routes.patch("/applications/:applicationId/decision", async (c) => {
     const applicationId = c.req.param("applicationId");
     const reviewer = c.get("appUser")!;
@@ -91,6 +117,46 @@ export function createAdminRoutes(deps: AppDependencies = {}) {
     });
 
     return c.json({ application: reviewed });
+  });
+
+  routes.get("/documents/:documentId/view", async (c) => {
+    const documentId = c.req.param("documentId");
+    const db = createDrizzleDb(c.env.DB);
+    const document = await findDocumentById(db, documentId);
+
+    if (!document) {
+      throw new ApiError({
+        code: "NOT_FOUND",
+        message: "Document not found.",
+        status: 404,
+      });
+    }
+
+    if (!c.env.DOCUMENTS_BUCKET) {
+      throw new ApiError({
+        code: "STORAGE_UNAVAILABLE",
+        message: "Storage bucket is not configured.",
+        status: 503,
+      });
+    }
+
+    const object = await c.env.DOCUMENTS_BUCKET.get(document.storageKey);
+    if (!object) {
+      throw new ApiError({
+        code: "NOT_FOUND",
+        message: "Document file not found in storage.",
+        status: 404,
+      });
+    }
+
+    c.header("Content-Type", document.mimeType);
+    c.header(
+      "Content-Disposition",
+      `inline; filename="${encodeURIComponent(document.originalName)}"`,
+    );
+    c.header("Cache-Control", "private, no-store");
+
+    return c.body(object.body);
   });
 
   routes.get("/documents/:documentId/download", async (c) => {

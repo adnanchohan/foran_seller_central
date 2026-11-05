@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { ALLOWED_DOCUMENT_MIME_TYPES, DOCUMENT_TYPES, MAX_UPLOAD_BYTES } from "@foran/config";
 import { createDrizzleDb } from "../data/db.js";
-import { createDocument } from "../data/documents-repository.js";
+import { createDocument, findDocumentById } from "../data/documents-repository.js";
 import { ApiError } from "../http/api-error.js";
 import { createAuthMiddleware } from "../middleware/auth.js";
 import { generateSecureToken } from "../security/tokens.js";
@@ -84,6 +84,47 @@ export function createUploadRoutes(deps: AppDependencies = {}) {
     );
 
     return c.json({ document }, 201);
+  });
+
+  routes.get("/:id/view", async (c) => {
+    const user = c.get("appUser")!;
+    const id = c.req.param("id");
+    const db = createDrizzleDb(c.env.DB);
+    const document = await findDocumentById(db, id);
+
+    if (!document || (document.ownerId !== user.id && user.role !== "admin")) {
+      throw new ApiError({
+        code: "NOT_FOUND",
+        message: "Document not found.",
+        status: 404,
+      });
+    }
+
+    if (!c.env.DOCUMENTS_BUCKET) {
+      throw new ApiError({
+        code: "STORAGE_UNAVAILABLE",
+        message: "Storage bucket is not configured.",
+        status: 503,
+      });
+    }
+
+    const object = await c.env.DOCUMENTS_BUCKET.get(document.storageKey);
+    if (!object) {
+      throw new ApiError({
+        code: "NOT_FOUND",
+        message: "File not found in storage.",
+        status: 404,
+      });
+    }
+
+    c.header("Content-Type", document.mimeType);
+    c.header(
+      "Content-Disposition",
+      `inline; filename="${encodeURIComponent(document.originalName)}"`,
+    );
+    c.header("Cache-Control", "private, max-age=3600");
+
+    return c.body(object.body);
   });
 
   return routes;

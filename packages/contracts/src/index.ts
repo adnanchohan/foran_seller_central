@@ -75,8 +75,14 @@ export interface StoreApplication {
   reviewedBy: string | null;
   reviewNote: string;
   history?: ApplicationHistoryItem[];
+  user?: User | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface DeleteApplicationResponse {
+  success: boolean;
+  message: string;
 }
 
 export interface ApplicationDraftInput {

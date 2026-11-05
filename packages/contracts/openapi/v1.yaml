@@ -338,6 +338,36 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntityError"
 
+  /uploads/{documentId}/view:
+    get:
+      summary: View uploaded document stream
+      operationId: viewUploadedDocument
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: token
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document binary stream
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /payments/placeholder:
     post:
       summary: Complete simulated onboarding payment
@@ -461,6 +491,40 @@ paths:
                     $ref: "#/components/schemas/StoreApplication"
                 required:
                   - application
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    delete:
+      summary: Wipe out store application from database
+      operationId: deleteApplication
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Store application successfully wiped out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Store application successfully wiped out.
+                required:
+                  - success
+                  - message
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -722,6 +786,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ApplicationHistoryItem"
+        user:
+          anyOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
         createdAt:
           type: integer
         updatedAt:

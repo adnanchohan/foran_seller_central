@@ -12,7 +12,7 @@ export const corsMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
     c.header("Access-Control-Allow-Credentials", "true");
     c.header(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Requested-With, X-Request-Id, X-CSRF-Token",
+      "Content-Type, Authorization, X-Requested-With, X-Request-Id, X-CSRF-Token, X-Foran-Portal",
     );
     c.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   }

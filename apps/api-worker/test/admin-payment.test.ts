@@ -219,5 +219,28 @@ describe("API Worker - Admin Review, Plan Selection & Dashboard Flow", () => {
     );
     expect(downloadRes.status).toBe(200);
     expect(downloadRes.headers.get("Content-Type")).toBe("image/jpeg");
+
+    // 12. Admin wipes out store from database
+    const deleteRes = await app.request(
+      `https://example.com/v1/admin/applications/${application.id}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${adminToken}` },
+      },
+      env,
+    );
+    expect(deleteRes.status).toBe(200);
+    const deleteJson = (await deleteRes.json()) as { success: boolean };
+    expect(deleteJson.success).toBe(true);
+
+    // Verify application is completely gone (404)
+    const getDeletedRes = await app.request(
+      `https://example.com/v1/admin/applications/${application.id}`,
+      {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      },
+      env,
+    );
+    expect(getDeletedRes.status).toBe(404);
   });
 });
